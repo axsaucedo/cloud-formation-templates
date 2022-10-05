@@ -1,0 +1,121 @@
+AWSTemplateFormatVersion: 2010-09-09
+Metadata:
+  'AWS::CloudFormation::Designer':
+    76dd58b5-65ab-4782-9aae-7342d12d1b6f:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 60
+        'y': 330
+      z: 1
+      embeds: []
+    9957cd73-e852-42cb-b3f7-bb2474975882:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 70
+        'y': 220
+      z: 1
+      embeds: []
+      dependson:
+        - 4c6e9091-7a5d-47bd-b626-d8f1395e7d7e
+        - 9957cd73-e852-42cb-b3f7-bb2474975882
+        - 76dd58b5-65ab-4782-9aae-7342d12d1b6f
+        - c00b63e9-4a1b-468a-ae70-340ac0f32134
+        - fa7a4351-4983-456f-b780-e0a7153f80ba
+    126ecc54-1074-417f-a162-0409f3f2174c:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -70
+        'y': 90
+      z: 1
+      embeds: []
+    4c6e9091-7a5d-47bd-b626-d8f1395e7d7e:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 210
+        'y': -30
+      z: 1
+      embeds: []
+    fa7a4351-4983-456f-b780-e0a7153f80ba:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -80
+        'y': 200
+      z: 1
+      embeds: []
+    a08df223-40db-4068-9dbe-f2e7f9d8c031:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 210
+        'y': 90
+      z: 1
+      embeds: []
+Resources:
+  StreamProcessingEC2Instance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: ami-01aedbccca44b27fd
+      InstanceType: t2.micro
+      KeyName: DataAnalytics
+      SecurityGroupIds:
+        - sg-06f015661b3373025
+      IamInstanceProfile: !Ref DataAnalyticsRoleProfile
+    DependsOn:
+      - DataAnalyticsRoleProfile
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 9957cd73-e852-42cb-b3f7-bb2474975882
+    DependsOn:
+      - DataAnalyticsRoleProfile
+  StreamProcessingMount:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      InstanceId: !Ref StreamProcessingEC2Instance
+      VolumeId: !Ref StreamProcessingVolume
+      Device: /dev/sdh
+    DependsOn:
+      - StreamProcessingVolume
+      - StreamProcessingEC2Instance
+  StreamProcessingVolume:
+    Type: AWS::EC2::Volume
+    Properties:
+      SnapshotId: snap-0b6071a841719f106
+      AvailabilityZone:
+        Fn::GetAtt:
+          - StreamProcessingEC2Instance
+          - AvailabilityZone
+  DataAnalyticsRoleProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - Ref: DataAnalyticsEc2AdminIAMRole
+    DependsOn:
+      - DataAnalyticsEc2AdminIAMRole
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: a08df223-40db-4068-9dbe-f2e7f9d8c031
+  DataAnalyticsEc2AdminIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Path: /
+      RoleName: DataAnalyticsEc2AdminIAMRole
+      AssumeRolePolicyDocument: >-
+        {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}
+      MaxSessionDuration: 3600
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 4c6e9091-7a5d-47bd-b626-d8f1395e7d7e

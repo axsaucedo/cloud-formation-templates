@@ -1,0 +1,249 @@
+AWSTemplateFormatVersion: 2010-09-09
+Metadata:
+  'AWS::CloudFormation::Designer':
+    76dd58b5-65ab-4782-9aae-7342d12d1b6f:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 60
+        'y': 330
+      z: 1
+      embeds: []
+    9957cd73-e852-42cb-b3f7-bb2474975882:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 70
+        'y': 220
+      z: 1
+      embeds: []
+      dependson:
+        - 4c6e9091-7a5d-47bd-b626-d8f1395e7d7e
+        - 9957cd73-e852-42cb-b3f7-bb2474975882
+        - 76dd58b5-65ab-4782-9aae-7342d12d1b6f
+        - c00b63e9-4a1b-468a-ae70-340ac0f32134
+        - fa7a4351-4983-456f-b780-e0a7153f80ba
+    126ecc54-1074-417f-a162-0409f3f2174c:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -70
+        'y': 90
+      z: 1
+      embeds: []
+    4c6e9091-7a5d-47bd-b626-d8f1395e7d7e:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 210
+        'y': -30
+      z: 1
+      embeds: []
+    fa7a4351-4983-456f-b780-e0a7153f80ba:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -80
+        'y': 200
+      z: 1
+      embeds: []
+    a08df223-40db-4068-9dbe-f2e7f9d8c031:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 210
+        'y': 90
+      z: 1
+      embeds: []
+Resources:
+  DemoStreamKinesisFirehose:
+    Type: 'AWS::KinesisFirehose::DeliveryStream'
+    Properties:
+      DeliveryStreamName: PurchaseLogs
+      DeliveryStreamType: DirectPut
+      S3DestinationConfiguration:
+        BucketARN: 'arn:aws:s3:::axsaucedo-orderlogs'
+        BufferingHints:
+          IntervalInSeconds: '60'
+          SizeInMBs: '50'
+        RoleARN:
+          'Fn::GetAtt':
+            - KinesisFirehoseIAMServiceRole
+            - Arn
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: fa7a4351-4983-456f-b780-e0a7153f80ba
+
+  PurchaseLogsKinesisStream:
+    Type: 'AWS::Kinesis::Stream'
+    Properties:
+      Name: CadabraOrders
+      StreamModeDetails:
+        StreamMode: PROVISIONED
+      ShardCount: 1
+      RetentionPeriodHours: 24
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 76dd58b5-65ab-4782-9aae-7342d12d1b6f
+    DeletionPolicy: Delete
+
+  StreamProcessingEC2Instance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: ami-003352649cd03bcce
+      InstanceType: t2.micro
+      KeyName: DataAnalytics
+      SecurityGroupIds:
+        - sg-06f015661b3373025
+      IamInstanceProfile: !Ref DataAnalyticsRoleProfile
+    DependsOn:
+      - DataAnalyticsRoleProfile
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 9957cd73-e852-42cb-b3f7-bb2474975882
+    DependsOn:
+      - DataAnalyticsRoleProfile
+      - PurchaseLogsKinesisStream
+      - DemoStreamKinesisFirehose
+
+  DataAnalyticsRoleProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      Path: /
+      Roles:
+        - Ref: DataAnalyticsEc2AdminIAMRole
+    DependsOn:
+      - DataAnalyticsEc2AdminIAMRole
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: a08df223-40db-4068-9dbe-f2e7f9d8c031
+
+  DataAnalyticsEc2AdminIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Path: /
+      RoleName: DataAnalyticsEc2AdminIAMRole
+      AssumeRolePolicyDocument: >-
+        {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}
+      MaxSessionDuration: 3600
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 4c6e9091-7a5d-47bd-b626-d8f1395e7d7e
+
+  KinesisFirehoseIAMServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Path: /service-role/
+      RoleName: !Sub 'KinesisFirehoseServiceRole-PurchaseLogs-role-${AWS::Region}'
+      AssumeRolePolicyDocument: >-
+        {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"firehose.amazonaws.com"},"Action":"sts:AssumeRole"}]}
+      MaxSessionDuration: 3600
+      ManagedPolicyArns:
+        - !Sub >-
+          arn:aws:iam::${AWS::AccountId}:policy/service-role/KinesisFirehoseServicePolicy-PurchaseLogs-${AWS::Region}
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 126ecc54-1074-417f-a162-0409f3f2174c
+
+  DynamoDBTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+          AttributeDefinitions: 
+            - AttributeName: "CustomerID"
+              AttributeType: "N"
+            - AttributeName: "OrderID"
+              AttributeType: "S"
+          TableName: "CadabraOrders"
+          KeySchema: 
+            - AttributeName: "CustomerID"
+              KeyType: "HASH"
+            - AttributeName: "OrderID"
+              KeyType: "RANGE"
+          ProvisionedThroughput: 
+              ReadCapacityUnits: 5
+              WriteCapacityUnits: 5
+
+  LambdaDynamoKinesisRole:
+      Type: "AWS::IAM::Role"
+      Properties:
+          Path: "/"
+          RoleName: "LambdaDynamoKinesisRole"
+          AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
+          MaxSessionDuration: 3600
+          ManagedPolicyArns: 
+            - "arn:aws:iam::aws:policy/AmazonKinesisReadOnlyAccess"
+            - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+            - "arn:aws:iam::aws:policy/AWSLambdaBasicExecutionRole"
+
+  LambdaFunction:
+      Type: "AWS::Lambda::Function"
+      Properties:
+          Description: ""
+          FunctionName: "CadabraOrdersLambda"
+          Handler: "index.lambda_handler"
+          Architectures: 
+            - "x86_64"
+          Code: 
+              ZipFile: |
+                  import base64
+                  import json
+                  import boto3
+                  import decimal
+                  import uuid
+
+                  def lambda_handler(event, context):
+                      item = None
+                      dynamo_db = boto3.resource('dynamodb')
+                      table = dynamo_db.Table('CadabraOrders')
+                      decoded_record_data = [base64.b64decode(record['kinesis']['data']) for record in event['Records']]
+                      deserialized_data = [json.loads(decoded_record) for decoded_record in decoded_record_data]
+
+                      with table.batch_writer() as batch_writer:
+                          for item in deserialized_data:
+                              # We've added a try / except block here to deal with invalid input rows more gracefully.
+                              # Be aware there are stretches of the input data that have no customer ID's at all,
+                              # keep trying the LogGenerator script to get past that if you run into it.
+                              try:
+                                  invoice = item['InvoiceNo']
+                                  customer = int(item['Customer'])
+                                  orderDate = item['InvoiceDate']
+                                  quantity = item['Quantity']
+                                  description = item['Description']
+                                  unitPrice = item['UnitPrice']
+                                  country = item['Country'].rstrip()
+                                  stockCode = item['StockCode']
+                          
+                                  # Construct a unique sort key for this line item
+                                  # We've added a uuid at the end as there is some duplicate invoice/stockcode
+                                  # data in our sample data.
+                                  orderID = invoice + "-" + stockCode + "-" + uuid.uuid4().hex
+
+                                  batch_writer.put_item(Item = {
+                                          'CustomerID': decimal.Decimal(customer),
+                                          'OrderID': orderID,
+                                          'OrderDate': orderDate,
+                                          'Quantity': decimal.Decimal(quantity),
+                                          'UnitPrice': decimal.Decimal(unitPrice),
+                                          'Description': description,
+                                          'Country': country
+                                      }
+                                  )
+                                  print("Wrote item into batch.")
+                              except:
+                                  print("Error processing invalid input row.")                
+          MemorySize: 128
+          Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LambdaDynamoKinesisRole"
+          Runtime: "python3.9"
+          Timeout: 3
+          TracingConfig: 
+              Mode: "PassThrough"
+          EphemeralStorage: 
+              Size: 512
