@@ -96,7 +96,7 @@ Resources:
   StreamProcessingEC2Instance:
     Type: 'AWS::EC2::Instance'
     Properties:
-      ImageId: ami-003352649cd03bcce
+      ImageId: ami-0b57986a83f912756
       InstanceType: t2.micro
       KeyName: DataAnalytics
       SecurityGroupIds:
