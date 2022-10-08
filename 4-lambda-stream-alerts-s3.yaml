@@ -124,9 +124,6 @@ Resources:
     Metadata:
       'AWS::CloudFormation::Designer':
         id: 9957cd73-e852-42cb-b3f7-bb2474975882
-    DependsOn:
-      - DataAnalyticsRoleProfile
-      - PurchaseLogsKinesisStream
 
   DataAnalyticsRoleProfile:
     Type: 'AWS::IAM::InstanceProfile'
@@ -187,39 +184,27 @@ Resources:
               ReadCapacityUnits: 5
               WriteCapacityUnits: 5
 
-  LambdaDynamoKinesisRole:
-      Type: "AWS::IAM::Role"
+  CadabraAlarmsSNSTopic:
+      Type: "AWS::SNS::Topic"
       Properties:
-          Path: "/"
-          RoleName: "LambdaDynamoKinesisRole"
-          AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
-          MaxSessionDuration: 3600
-          ManagedPolicyArns: 
-            - "arn:aws:iam::aws:policy/AmazonKinesisReadOnlyAccess"
-            - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
-            - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+          DisplayName: ""
+          TopicName: "CadabraAlarms"
 
-    CadabraAlarmsSNSTopic:
-        Type: "AWS::SNS::Topic"
-        Properties:
-            DisplayName: ""
-            TopicName: "CadabraAlarms"
+  AlarmsSNSSubscription:
+      Type: "AWS::SNS::Subscription"
+      Properties:
+          TopicArn: !Ref CadabraAlarmsSNSTopic
+          Endpoint: "axsauze@gmail.com"
+          Protocol: "email"
+          Region: !Ref AWS::Region
+      DependsOn:
+          - CadabraAlarmsSNSTopic
 
-    SNSSubscription:
-        Type: "AWS::SNS::Subscription"
-        Properties:
-            TopicArn: !Ref CadabraAlarmsSNSTopic
-            Endpoint: "axsauze@gmail.com"
-            Protocol: "email"
-            Region: !Ref AWS::Region
-        DependsOn:
-            - CadabraAlarmsSNSTopic
-
-  LambdaFunction:
+  StreamToFirehoseLambdaFunction:
       Type: "AWS::Lambda::Function"
       Properties:
           Description: ""
-          FunctionName: "CadabraOrdersLambda"
+          FunctionName: "StreamFirehoseLambda"
           Handler: "index.lambda_handler"
           Architectures: 
             - "x86_64"
@@ -281,3 +266,105 @@ Resources:
               Size: 512
       DependsOn:
         - LambdaDynamoKinesisRole
+
+  StreamToFirehoseLambdaEventSourceMapping:
+      Type: "AWS::Lambda::EventSourceMapping"
+      Properties:
+          BatchSize: 100
+          EventSourceArn: !GetAtt PurchaseLogsKinesisStream.Arn
+          FunctionName: !Ref StreamToFirehoseLambdaFunction
+          Enabled: true
+          MaximumBatchingWindowInSeconds: 0
+          ParallelizationFactor: 1
+          MaximumRecordAgeInSeconds: -1
+          BisectBatchOnFunctionError: false
+          MaximumRetryAttempts: -1
+          TumblingWindowInSeconds: 0
+          StartingPosition: LATEST
+      DependsOn:
+        - PurchaseLogsKinesisStream
+        - StreamToFirehoseLambdaFunction
+
+  LambdaDynamoKinesisRole:
+      Type: "AWS::IAM::Role"
+      Properties:
+          Path: "/"
+          RoleName: "LambdaDynamoKinesisRole"
+          AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
+          MaxSessionDuration: 3600
+          ManagedPolicyArns: 
+            - "arn:aws:iam::aws:policy/AmazonKinesisReadOnlyAccess"
+            - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+            - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+
+  StreamAlertsLambdaFunction:
+      Type: "AWS::Lambda::Function"
+      Properties:
+          Description: ""
+          FunctionName: "StreamAlertsLambda"
+          Handler: "index.lambda_handler"
+          Architectures: 
+            - "x86_64"
+          Code: 
+              ZipFile: !Sub |
+                  import base64
+                  from __future__ import print_function
+                  import boto3
+                  import base64
+
+                  client = boto3.client('sns')
+                  topic_arn = "${AlarmsSNSSubscription}"
+
+                  def lambda_handler(event, context):
+                      try:
+                          client.publish(TopicArn=topic_arn, Message='Investigate sudden surge in orders', Subject='Cadabra Order Rate Alarm')
+                          print('Successfully delivered alarm message')
+                      except Exception:
+                          print('Delivery failure')
+          MemorySize: 128
+          Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/LambdaKinesisSNSExecutionRole"
+          Runtime: "python3.9"
+          Timeout: 60
+          TracingConfig: 
+              Mode: "PassThrough"
+          EphemeralStorage: 
+              Size: 512
+      DependsOn:
+        - LambdaKinesisSNSExecutionRole
+        - AlarmsSNSSubscription
+
+  AlertLambdaEventSourceMapping:
+      Type: "AWS::Lambda::EventSourceMapping"
+      Properties:
+          BatchSize: 100
+          EventSourceArn: !GetAtt OrderRateAlarmsKinesisStream.Arn
+          FunctionName: !Ref StreamAlertsLambdaFunction
+          Enabled: true
+          MaximumBatchingWindowInSeconds: 0
+          ParallelizationFactor: 1
+          MaximumRecordAgeInSeconds: -1
+          BisectBatchOnFunctionError: false
+          MaximumRetryAttempts: -1
+          TumblingWindowInSeconds: 0
+          StartingPosition: LATEST
+      DependsOn:
+        - OrderRateAlarmsKinesisStream
+        - LambdaKinesisSNSExecutionRole
+
+  LambdaKinesisSNSExecutionRole:
+      Type: "AWS::IAM::Role"
+      Properties:
+          Path: "/"
+          RoleName: "LambdaKinesisSNSExecutionRole"
+          AssumeRolePolicyDocument: "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
+          MaxSessionDuration: 3600
+          ManagedPolicyArns: 
+            - "arn:aws:iam::aws:policy/AmazonKinesisReadOnlyAccess"
+            - "arn:aws:iam::aws:policy/AmazonSNSFullAccess"
+            - "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+            - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+            - "arn:aws:iam::aws:policy/service-role/AWSLambdaKinesisExecutionRole"
+
+
+
+
